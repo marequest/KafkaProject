@@ -1,17 +1,22 @@
+import com.launchdarkly.eventsource.EventHandler;
+import com.launchdarkly.eventsource.EventSource;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.protocol.types.Field;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URI;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 public class Producer {
 
     private final static Logger log = LoggerFactory.getLogger(Producer.class.getSimpleName());
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         log.info("Kafka Producer Start");
 
         Properties properties = new Properties();
@@ -19,16 +24,20 @@ public class Producer {
         properties.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         properties.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
 
+        properties.setProperty(ProducerConfig.LINGER_MS_CONFIG, "20");
+        properties.setProperty(ProducerConfig.BATCH_SIZE_CONFIG, String.valueOf(32*1024));
+//        properties.setProperty(ProducerConfig.LINGER_MS_CONFIG, "snappy");
+
         KafkaProducer<String, String> producer = new KafkaProducer<>(properties);
+        String topic = "wikimedia.recentchange";
 
-        ProducerRecord<String, String> record1 = new ProducerRecord<>("my-application", "Ovo je cas velikih podataka");
-        ProducerRecord<String, String> record2 = new ProducerRecord<>("my-application", "Ovo je druga poruka");
+        EventHandler eventHandler = new WikimediaChangesHandler(producer, topic);
 
-        producer.send(record1);
-        producer.send(record2);
+        String url = "https://stream.wikimedia.org/v2/stream/recentchange";
+        EventSource.Builder builder = new EventSource.Builder(eventHandler, URI.create(url));
+        EventSource eventSource = builder.build();
 
-
-        producer.flush();
-        producer.close();
+        eventSource.start();
+        TimeUnit.MINUTES.sleep(10);
     }
 }
